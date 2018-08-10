@@ -1,0 +1,82 @@
+# files: roles/bgp/tasks/tasks.yaml
+
+- name: "{{ inventory_hostname }} - gather our facts for the BGP"
+  import_tasks: "../../../helper_tasks/gather_facts.yaml"
+  tags: bgp
+
+- name: "{{ inventory_hostname }} - initialize our changes store"
+  import_tasks: "../../../helper_tasks/init_changes_store.yaml"
+  when: ansible_check_mode
+  tags: bgp
+
+- name: Router - BGP
+  block:
+    - name: "{{ inventory_hostname }} - BGP router_id"
+      ios_config:
+        running_config: "{{ facts_ios.ansible_facts.ansible_net_config }}"
+        parents:
+          - router bgp {{ AS_number }}
+        lines:
+          - bgp router-id {{management_interface.ip_address}}
+        register: changes1
+      notify:
+        - save ios config
+
+    - name: "{{ inventory_hostname }} - update our changes as needed"
+      set_fact:
+        changes: "{{ changes }} + {{ changes1.updates }}"
+      when: ansible_check_mode and changes1.changed
+
+  when: ansible_network_os == "ios"
+  tags: bgp
+  
+- name: Router - BGP_network_statements
+  block:
+    - name: "{{ inventory_hostname }} - network_statements"
+      ios_config:
+        running_config: "{{ facts_ios.ansible_facts.ansible_net_config }}"
+        parents:
+          - router bgp {{ AS_number }}
+        lines:
+          - network {{item.network}} mask {{item.mask}}
+        loop :
+          {{ BGPlinks }}
+          
+        register: changes1
+      notify:
+        - save ios config
+
+    - name: "{{ inventory_hostname }} - update our changes as needed"
+      set_fact:
+        changes: "{{ changes }} + {{ changes1.updates }}"
+      when: ansible_check_mode and changes1.changed
+
+  when: ansible_network_os == "ios"
+  tags: bgp
+  
+ - name: Router - BGP_neighbor_statements
+  block:
+    - name: "{{ inventory_hostname }} - neighbor_statements"
+      ios_config:
+        running_config: "{{ facts_ios.ansible_facts.ansible_net_config }}"
+        parents:
+          - router bgp {{ AS_number }}
+        lines:
+          - neighbor {{ item.neighbor }} remote-as {{ Remote_AS_Number }}
+          - neighbor {{ item.neighbor }} timers 30 90
+          - neighbor {{ item.neighbor }} next-hop-self
+          - neighbor {{ item.neighbor }} send-community
+        loop :
+          {{ BGPneighbors }}
+          
+        register: changes1
+      notify:
+        - save ios config
+
+    - name: "{{ inventory_hostname }} - update our changes as needed"
+      set_fact:
+        changes: "{{ changes }} + {{ changes1.updates }}"
+      when: ansible_check_mode and changes1.changed
+
+  when: ansible_network_os == "ios"
+  tags: bgp
